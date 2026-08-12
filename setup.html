@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>إعداد قاعدة البيانات - مجستي</title>
+<style>
+  body{
+    font-family: Tahoma, Arial, sans-serif; background:#0F1B33; color:#F3F6FC;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .box{
+    max-width:480px; width:100%; background:#1C2F55; border:1px solid #2C4270; border-radius:18px;
+    padding:30px; text-align:center;
+  }
+  h1{ font-size:19px; margin-bottom:10px; }
+  p{ color:#A9B7D6; font-size:14px; line-height:1.8; margin-bottom:20px; }
+  button{
+    background:linear-gradient(135deg,#E7C769,#C9A227); color:#0F1B33; border:none;
+    padding:16px 24px; border-radius:12px; font-size:16px; font-weight:bold; cursor:pointer; width:100%;
+  }
+  button:disabled{ opacity:.6; }
+  #result{
+    margin-top:22px; padding:18px; background:#16274A; border:1px solid #2C4270; border-radius:12px;
+    display:none; text-align:right;
+  }
+  #result.show{ display:block; }
+  #idBox{
+    background:#0F1B33; border:1px solid #C9A227; border-radius:10px; padding:14px; margin:12px 0;
+    font-family:monospace; font-size:16px; word-break:break-all; text-align:center; color:#E7C769;
+  }
+  .copybtn{
+    background:#2C4270; color:#F3F6FC; border:none; padding:10px 16px; border-radius:8px;
+    font-size:13px; cursor:pointer; width:100%; margin-top:6px;
+  }
+  #status{ font-size:13px; color:#A9B7D6; margin-top:14px; }
+  .err{ color:#FF9086; }
+  .ok{ color:#6FE3AC; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>🔧 إعداد قاعدة بيانات الكشك</h1>
+    <p>دوس الزرار ده مرة واحدة بس. هينشئ مكان تخزين حقيقي مجاني، من غير أي حساب أو تسجيل. بعد ما يظهرلك الكود، انسخه وابعتهولي في الشات.</p>
+    <button id="createBtn">أنشئ قاعدة البيانات الآن</button>
+    <div id="status"></div>
+    <div id="result">
+      <div>الكود اللي تبعتهولي:</div>
+      <div id="idBox">—</div>
+      <button class="copybtn" id="copyBtn">نسخ الكود</button>
+    </div>
+  </div>
+
+<script>
+const btn = document.getElementById('createBtn');
+const statusEl = document.getElementById('status');
+const resultEl = document.getElementById('result');
+const idBox = document.getElementById('idBox');
+const copyBtn = document.getElementById('copyBtn');
+
+btn.addEventListener('click', async () => {
+  btn.disabled = true;
+  statusEl.textContent = 'جاري الإنشاء...';
+  statusEl.className = '';
+  try{
+    // 1) create a new bucket (no auth needed)
+    const createRes = await fetch('https://kvdb.io/', { method: 'POST' });
+    if(!createRes.ok) throw new Error('فشل الإنشاء');
+    const bucketId = (await createRes.text()).trim();
+    if(!bucketId || bucketId.length < 5) throw new Error('لم يتم استلام كود صحيح');
+
+    // 2) make keys permanent (no expiry)
+    await fetch(`https://kvdb.io/${bucketId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'default_ttl=0'
+    });
+
+    // 3) verify it actually works with a test write/read
+    await fetch(`https://kvdb.io/${bucketId}/test`, { method: 'PUT', body: 'ok' });
+    const verifyRes = await fetch(`https://kvdb.io/${bucketId}/test`);
+    const verifyText = await verifyRes.text();
+    if(verifyText.trim() !== 'ok') throw new Error('فشل التحقق من القراءة والكتابة');
+
+    idBox.textContent = bucketId;
+    resultEl.classList.add('show');
+    statusEl.textContent = '✅ تم بنجاح، الكود شغال ومتأكد منه.';
+    statusEl.className = 'ok';
+  }catch(e){
+    statusEl.textContent = '❌ حصل خطأ: ' + e.message + ' — جرب تاني أو غيّر الإنترنت.';
+    statusEl.className = 'err';
+  }
+  btn.disabled = false;
+});
+
+copyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(idBox.textContent).then(() => {
+    copyBtn.textContent = 'اتنسخ ✓';
+    setTimeout(() => { copyBtn.textContent = 'نسخ الكود'; }, 1500);
+  });
+});
+</script>
+</body>
+</html>
