@@ -472,32 +472,44 @@
     return diffMin > 0 ? Math.round(diffMin) : 0;
   }
 
-  // ===== Cross-device sync layer =====
-  // Works both inside Claude (window.storage) and as a standalone file opened
-  // on different phones/tablets (via a free cloud key-value store, kvdb.io),
-  // with localStorage as a last-resort offline cache.
-  const KVDB_BUCKET = "majesty-clinics-attendance-kiosk-7f2q9d";
-  const KVDB_BASE = `https://kvdb.io/${KVDB_BUCKET}`;
+  // ===== Cross-device sync layer (JSONBin.io) =====
+  // Works both inside Claude (window.storage) and as a standalone hosted page
+  // opened on different phones/tablets, with localStorage as an offline cache.
+  const JSONBIN_ID = "6a7e3ffbf5f4af5e291345b7";
+  const JSONBIN_KEY = "$2a$10$Pu3/yD7yDHkhNwl3h8EamuK4kFc/jlZMQCxgdckrsDbbnF8a8aN3G";
+  const JSONBIN_BASE = `https://api.jsonbin.io/v3/b/${JSONBIN_ID}`;
   const hasClaudeStorage = (typeof window.storage !== 'undefined' && window.storage);
 
-  async function cloudGet(key){
-    try{
-      const res = await fetch(`${KVDB_BASE}/${encodeURIComponent(key)}`);
-      if(res.status === 404) return null;
-      if(!res.ok) throw new Error('bad status ' + res.status);
-      return await res.text();
-    }catch(e){
-      return null; // network issue -> caller falls back to local cache
-    }
+  let DB_CACHE = null; // { kv: { [key]: valueString } }
+
+  async function dbFetch(){
+    const res = await fetch(`${JSONBIN_BASE}/latest`, {
+      headers: { 'X-Master-Key': JSONBIN_KEY }
+    });
+    if(!res.ok) throw new Error('bad status ' + res.status);
+    const json = await res.json();
+    return (json.record && typeof json.record === 'object') ? json.record : { kv: {} };
   }
 
-  async function cloudSet(key, value){
-    try{
-      await fetch(`${KVDB_BASE}/${encodeURIComponent(key)}`, { method: 'PUT', body: value });
-      return true;
-    }catch(e){
-      return false;
+  async function dbSave(doc){
+    const res = await fetch(JSONBIN_BASE, {
+      method: 'PUT',
+      headers: { 'X-Master-Key': JSONBIN_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(doc)
+    });
+    if(!res.ok) throw new Error('save failed ' + res.status);
+  }
+
+  async function ensureDbLoaded(force){
+    if(!DB_CACHE || force){
+      try{
+        DB_CACHE = await dbFetch();
+        if(!DB_CACHE.kv) DB_CACHE.kv = {};
+      }catch(e){
+        if(!DB_CACHE) DB_CACHE = { kv: {} };
+      }
     }
+    return DB_CACHE;
   }
 
   async function storageGet(key){
@@ -507,11 +519,13 @@
         return res && res.value ? res.value : null;
       }catch(e){ return null; }
     }
-    const cloudVal = await cloudGet(key);
-    if(cloudVal !== null){
-      try{ localStorage.setItem(key, cloudVal); }catch(e){}
-      return cloudVal;
-    }
+    try{
+      const doc = await ensureDbLoaded();
+      if(doc.kv && Object.prototype.hasOwnProperty.call(doc.kv, key)){
+        try{ localStorage.setItem(key, doc.kv[key]); }catch(e){}
+        return doc.kv[key];
+      }
+    }catch(e){}
     try{ return localStorage.getItem(key); }catch(e){ return null; }
   }
 
@@ -521,7 +535,15 @@
       return;
     }
     try{ localStorage.setItem(key, value); }catch(e){}
-    await cloudSet(key, value);
+    try{
+      const doc = await ensureDbLoaded();
+      doc.kv = doc.kv || {};
+      doc.kv[key] = value;
+      await dbSave(doc);
+      DB_CACHE = doc;
+    }catch(e){
+      // will be picked up again on next background sync / reload
+    }
   }
 
   const state = {}; // name -> record
@@ -1101,6 +1123,7 @@
     if(syncInFlight) return;
     syncInFlight = true;
     try{
+      if(!hasClaudeStorage){ await ensureDbLoaded(true); } // pull fresh data from other devices
       for(const name of EMPLOYEES){
         const raw = await storageGet(storageKey(name, currentDateKey));
         state[name] = raw ? JSON.parse(raw) : emptyRecord();
