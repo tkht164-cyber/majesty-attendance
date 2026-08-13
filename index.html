@@ -285,6 +285,7 @@
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div class="date-chip" id="dateChip">—</div>
+      <button class="gear-btn" id="refreshBtn" title="تحديث فوري">🔄</button>
       <button class="gear-btn" id="settingsBtn" title="إعدادات المدير">⚙</button>
     </div>
   </div>
@@ -1261,6 +1262,17 @@
     });
   }
 
+  function initManualRefresh(){
+    const btn = document.getElementById('refreshBtn');
+    if(!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.style.transition = 'transform .6s ease';
+      btn.style.transform = 'rotate(360deg)';
+      if(!hasClaudeStorage){ await backgroundSync(); } else { render(); }
+      setTimeout(() => { btn.style.transform = 'rotate(0deg)'; }, 600);
+    });
+  }
+
   (async () => {
     await loadSettings();
     await reconcileMissedDays();
@@ -1268,10 +1280,20 @@
     tickClock();
     setInterval(tickClock, 1000);
     if(!hasClaudeStorage){
-      setInterval(backgroundSync, 7000); // pull updates from other devices
+      // Quota-friendly sync: not on a tight timer (JSONBin free tier is a
+      // one-time request pool, not monthly), only when it's actually useful:
+      // when the tab becomes visible again, and a slow background trickle
+      // while it stays open, plus a manual refresh button for instant sync.
+      document.addEventListener('visibilitychange', () => {
+        if(document.visibilityState === 'visible') backgroundSync();
+      });
+      setInterval(() => {
+        if(document.visibilityState === 'visible') backgroundSync();
+      }, 120000); // every 2 minutes while the tab is actually open and visible
     }
     initHistoryControls();
     initAdminSettings();
+    initManualRefresh();
   })();
 })();
 </script>
