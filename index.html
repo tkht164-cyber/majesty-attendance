@@ -37,6 +37,19 @@
   body{ padding: 28px 20px 60px; }
   .mono{ font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
 
+  /* ===== Save error banner ===== */
+  .save-error-banner{
+    position: sticky; top:0; z-index: 900; display:none; align-items:center; justify-content:center;
+    gap:14px; flex-wrap:wrap; background: linear-gradient(90deg, #7A2E27, #9C3B31);
+    color:#FFE9E6; padding:12px 18px; text-align:center; font-size:13px; font-weight:600;
+    border-bottom:2px solid var(--red);
+  }
+  .save-error-banner.show{ display:flex; }
+  .save-error-banner button{
+    background: var(--gold); color: var(--navy-deep); border:none; border-radius:8px;
+    padding:8px 16px; font-weight:800; font-size:12.5px; cursor:pointer; white-space:nowrap;
+  }
+
   /* ===== Top bar ===== */
   .topbar{
     max-width: 1080px; margin: 0 auto 22px; display:flex; align-items:center;
@@ -284,6 +297,11 @@
 </style>
 </head>
 <body>
+
+  <div class="save-error-banner" id="saveErrorBanner">
+    <span id="saveErrorMsg"></span>
+    <button id="saveErrorRetryBtn">إعادة المحاولة الآن</button>
+  </div>
 
   <div class="topbar">
     <div class="brand">
@@ -552,14 +570,14 @@
 
   async function storageSet(key, value){
     if(hasClaudeStorage){
-      try{ await window.storage.set(key, value, true); }catch(e){}
-      return;
+      try{ await window.storage.set(key, value, true); return true; }catch(e){ return false; }
     }
     try{ localStorage.setItem(key, value); }catch(e){}
     // Serialize every write behind the previous one, and always fetch the
     // freshest doc right before merging in this change — this is what
     // prevents two quick taps (e.g. check-in then break, seconds apart)
     // from racing and one silently overwriting the other's save.
+    let ok = false;
     const run = writeQueue.then(async () => {
       try{
         const doc = await dbFetch();
@@ -567,12 +585,14 @@
         doc.kv[key] = value;
         await dbSave(doc);
         DB_CACHE = doc;
+        ok = true;
       }catch(e){
-        // will be picked up again on next background sync / reload
+        ok = false;
       }
     });
     writeQueue = run;
     await run;
+    return ok;
   }
 
   const state = {}; // name -> record
@@ -632,12 +652,29 @@
   }
 
   async function saveOne(name){
-    try{
-      await storageSet(storageKey(name, currentDateKey), JSON.stringify(state[name]));
+    const ok = await storageSet(storageKey(name, currentDateKey), JSON.stringify(state[name]));
+    if(ok){
       await addToIndex(currentDateKey);
-    }catch(e){
-      console.error('تعذر الحفظ', e);
+      hideSaveError();
+      return true;
+    } else {
+      showSaveError(name);
+      return false;
     }
+  }
+
+  let pendingRetryName = null;
+  function showSaveError(name){
+    pendingRetryName = name;
+    const banner = document.getElementById('saveErrorBanner');
+    const msg = document.getElementById('saveErrorMsg');
+    msg.textContent = `⚠️ فشل حفظ آخر عملية لـ "${name}" على السيرفر — تحقق من الإنترنت واضغط إعادة المحاولة. البيانات لسه محفوظة على هذا الجهاز فقط ولن يراها الباقون حتى تنجح المحاولة.`;
+    banner.classList.add('show');
+  }
+  function hideSaveError(){
+    pendingRetryName = null;
+    const banner = document.getElementById('saveErrorBanner');
+    if(banner) banner.classList.remove('show');
   }
 
   // ===== Date index (so we know which days actually have data) =====
@@ -1160,8 +1197,12 @@
     if(syncInFlight) return;
     syncInFlight = true;
     try{
+      if(pendingRetryName){
+        await saveOne(pendingRetryName); // retry silently; banner clears itself on success
+      }
       if(!hasClaudeStorage){ await ensureDbLoaded(true); } // pull fresh data from other devices
       for(const name of EMPLOYEES){
+        if(name === pendingRetryName) continue; // don't overwrite an unsaved local change with stale server data
         const raw = await storageGet(storageKey(name, currentDateKey));
         state[name] = raw ? JSON.parse(raw) : emptyRecord();
       }
@@ -1328,6 +1369,20 @@
     });
   }
 
+  function initSaveErrorBanner(){
+    const btn = document.getElementById('saveErrorRetryBtn');
+    if(!btn) return;
+    btn.addEventListener('click', async () => {
+      if(!pendingRetryName) return;
+      btn.disabled = true;
+      btn.textContent = 'جاري إعادة المحاولة...';
+      const ok = await saveOne(pendingRetryName);
+      btn.disabled = false;
+      btn.textContent = 'إعادة المحاولة الآن';
+      if(ok) render();
+    });
+  }
+
   (async () => {
     await loadSettings();
     await reconcileMissedDays();
@@ -1350,6 +1405,7 @@
     initAdminSettings();
     initManualRefresh();
     initDataLock();
+    initSaveErrorBanner();
   })();
 })();
 </script>
