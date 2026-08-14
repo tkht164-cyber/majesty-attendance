@@ -208,6 +208,16 @@
   .hist-result table{ margin-top:10px; }
   .hist-empty{ font-size:13px; color: var(--ink-soft); padding: 6px 2px; }
 
+  /* ===== Locked data placeholder (employee view) ===== */
+  .admin-hidden{ display:none; }
+  .locked-placeholder{
+    max-width:1080px; margin: 40px auto 0; text-align:center; padding: 34px 20px;
+    border:1px dashed var(--navy-line); border-radius:18px; background: rgba(255,255,255,.02);
+  }
+  .locked-icon{ font-size:28px; margin-bottom:10px; }
+  .locked-text{ color: var(--ink-soft); font-size:13.5px; margin-bottom:16px; line-height:1.8; }
+  #unlockDataBtn{ max-width:320px; margin:0 auto; }
+
   /* ===== Gear / admin button ===== */
   .gear-btn{
     width:36px; height:36px; border-radius:10px; border:1px solid var(--navy-line);
@@ -296,9 +306,16 @@
     <div class="hero-day" id="liveDay">—</div>
   </div>
 
-  <div class="quickglance" id="quickGlance"></div>
-
   <div class="grid" id="cardsGrid"></div>
+
+  <div id="lockedPlaceholder" class="locked-placeholder">
+    <div class="locked-icon">🔒</div>
+    <div class="locked-text">البيانات التفصيلية (ملخص اليوم، سجل الأيام، والتصدير) متاحة للمدير فقط</div>
+    <button class="hist-btn" id="unlockDataBtn">عرض البيانات (كلمة مرور المدير)</button>
+  </div>
+
+  <div id="adminOnlySections" class="admin-hidden">
+  <div class="quickglance" id="quickGlance"></div>
 
   <div class="summary">
     <div class="summary-head">
@@ -349,6 +366,7 @@
       </div>
       <div class="hist-result" id="exportStatus"></div>
     </div>
+  </div>
   </div>
 
   <div class="overlay hidden" id="pinOverlay">
@@ -1167,6 +1185,24 @@
     `;
   }
 
+  function unlockAdminData(){
+    const placeholder = document.getElementById('lockedPlaceholder');
+    const sections = document.getElementById('adminOnlySections');
+    if(placeholder) placeholder.style.display = 'none';
+    if(sections) sections.classList.remove('admin-hidden');
+  }
+
+  function initDataLock(){
+    const btn = document.getElementById('unlockDataBtn');
+    if(!btn) return;
+    btn.addEventListener('click', () => {
+      const pass = prompt('كلمة مرور المدير:');
+      if(pass === null) return;
+      if(pass !== SETTINGS.adminPass){ alert('كلمة المرور غير صحيحة.'); return; }
+      unlockAdminData();
+    });
+  }
+
   function initAdminSettings(){
     const settingsOverlay = document.getElementById('settingsOverlay');
     const settingsBody = document.getElementById('settingsBody');
@@ -1175,6 +1211,7 @@
       const pass = prompt('كلمة مرور المدير:');
       if(pass === null) return;
       if(pass !== SETTINGS.adminPass){ alert('كلمة المرور غير صحيحة.'); return; }
+      unlockAdminData();
       settingsBody.innerHTML = buildSettingsForm();
       settingsOverlay.classList.remove('hidden');
       document.getElementById('settingsSave').addEventListener('click', async () => {
@@ -1294,6 +1331,7 @@
     initHistoryControls();
     initAdminSettings();
     initManualRefresh();
+    initDataLock();
   })();
 })();
 </script>
