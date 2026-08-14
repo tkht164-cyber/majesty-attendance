@@ -548,21 +548,31 @@
     try{ return localStorage.getItem(key); }catch(e){ return null; }
   }
 
+  let writeQueue = Promise.resolve();
+
   async function storageSet(key, value){
     if(hasClaudeStorage){
       try{ await window.storage.set(key, value, true); }catch(e){}
       return;
     }
     try{ localStorage.setItem(key, value); }catch(e){}
-    try{
-      const doc = await ensureDbLoaded();
-      doc.kv = doc.kv || {};
-      doc.kv[key] = value;
-      await dbSave(doc);
-      DB_CACHE = doc;
-    }catch(e){
-      // will be picked up again on next background sync / reload
-    }
+    // Serialize every write behind the previous one, and always fetch the
+    // freshest doc right before merging in this change — this is what
+    // prevents two quick taps (e.g. check-in then break, seconds apart)
+    // from racing and one silently overwriting the other's save.
+    const run = writeQueue.then(async () => {
+      try{
+        const doc = await dbFetch();
+        doc.kv = doc.kv || {};
+        doc.kv[key] = value;
+        await dbSave(doc);
+        DB_CACHE = doc;
+      }catch(e){
+        // will be picked up again on next background sync / reload
+      }
+    });
+    writeQueue = run;
+    await run;
   }
 
   const state = {}; // name -> record
@@ -773,6 +783,8 @@
     `;
   }
 
+  const employeeBusy = {}; // name -> bool, true while an action is being saved
+
   function ensureCards(){
     if(cardsGrid.children.length === EMPLOYEES.length) return;
     cardsGrid.innerHTML = EMPLOYEES.map(cardTemplate).join('');
@@ -781,14 +793,20 @@
       card.addEventListener('click', async (e) => {
         const action = e.target.closest('[data-action]');
         if(!action) return;
+        if(employeeBusy[name]) return; // ignore taps while a save is already in flight
         const act = action.getAttribute('data-action');
         if(act === 'reset'){ handleReset(name); return; }
         const ok = await requestPin(name);
         if(!ok) return;
-        if(act === 'checkin') handleCheckIn(name);
-        else if(act === 'breakout') handleBreakOut(name);
-        else if(act === 'breakin') handleBreakIn(name);
-        else if(act === 'checkout') handleCheckOut(name);
+        employeeBusy[name] = true;
+        try{
+          if(act === 'checkin') await handleCheckIn(name);
+          else if(act === 'breakout') await handleBreakOut(name);
+          else if(act === 'breakin') await handleBreakIn(name);
+          else if(act === 'checkout') await handleCheckOut(name);
+        } finally {
+          employeeBusy[name] = false;
+        }
       });
     });
   }
