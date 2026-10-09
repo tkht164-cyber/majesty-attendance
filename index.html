@@ -1,188 +1,33 @@
-Skip to content
-tkht164-cyber
-majesty-attendance
-Repository navigation
-Code
-Issues
-Pull requests
-Actions
-Projects
-Wiki
-Security and quality
-Insights
-Settings
-Commit d53e160
-tkht164-cyber
-tkht164-cyber
-authored
-on Aug 14
-·
-·
-Verified
-Update index.html
-main
-1 parent 
-5db4934
- commit 
-d53e160
-1 file changed
-
-+63
--7
-Lines changed: 63 additions & 7 deletions
-File tree
-Filter files…
-index.html
-Search within code
- 
-‎index.html‎
-+63
--7
-Lines changed: 63 additions & 7 deletions
-Original file line number	Diff line number	Diff line change
-@@ -37,6 +37,19 @@
-  body{ padding: 28px 20px 60px; }
-  .mono{ font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
-
-  /* ===== Save error banner ===== */
-  .save-error-banner{
-    position: sticky; top:0; z-index: 900; display:none; align-items:center; justify-content:center;
-    gap:14px; flex-wrap:wrap; background: linear-gradient(90deg, #7A2E27, #9C3B31);
-    color:#FFE9E6; padding:12px 18px; text-align:center; font-size:13px; font-weight:600;
-    border-bottom:2px solid var(--red);
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>كشك الحضور والانصراف - مجستي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --navy-deep: #0F1B33;
+    --navy-panel: #16274A;
+    --navy-card: #1C2F55;
+    --navy-line: #2C4270;
+    --ink-soft: #A9B7D6;
+    --ink-bright: #F3F6FC;
+    --gold: #C9A227;
+    --gold-soft: #E7C769;
+    --green: #2FA36B;
+    --green-soft: #1D6B47;
+    --amber: #E0A526;
+    --amber-soft: #7A5A12;
+    --blue: #3E7BFA;
+    --blue-soft: #24417C;
+    --slate: #8792A8;
+    --red: #E4574C;
   }
-  .save-error-banner.show{ display:flex; }
-  .save-error-banner button{
-    background: var(--gold); color: var(--navy-deep); border:none; border-radius:8px;
-    padding:8px 16px; font-weight:800; font-size:12.5px; cursor:pointer; white-space:nowrap;
-  }
-  /* ===== Top bar ===== */
-  .topbar{
-    max-width: 1080px; margin: 0 auto 22px; display:flex; align-items:center;
-@@ -285,6 +298,11 @@
-</head>
-<body>
-
-  <div class="save-error-banner" id="saveErrorBanner">
-    <span id="saveErrorMsg"></span>
-    <button id="saveErrorRetryBtn">إعادة المحاولة الآن</button>
-  </div>
-  <div class="topbar">
-    <div class="brand">
-      <div class="brand-mark">م</div>
-@@ -552,27 +570,29 @@ <h2>سجل الأيام السابقة والتصدير</h2>
-
-  async function storageSet(key, value){
-    if(hasClaudeStorage){
-      try{ await window.storage.set(key, value, true); }catch(e){}
-      return;
-      try{ await window.storage.set(key, value, true); return true; }catch(e){ return false; }
-    }
-    try{ localStorage.setItem(key, value); }catch(e){}
-    // Serialize every write behind the previous one, and always fetch the
-    // freshest doc right before merging in this change — this is what
-    // prevents two quick taps (e.g. check-in then break, seconds apart)
-    // from racing and one silently overwriting the other's save.
-    let ok = false;
-    const run = writeQueue.then(async () => {
-      try{
-        const doc = await dbFetch();
-        doc.kv = doc.kv || {};
-        doc.kv[key] = value;
-        await dbSave(doc);
-        DB_CACHE = doc;
-        ok = true;
-      }catch(e){
-        // will be picked up again on next background sync / reload
-        ok = false;
-      }
-    });
-    writeQueue = run;
-    await run;
-    return ok;
-  }
-
-  const state = {}; // name -> record
-@@ -632,14 +652,31 @@ <h2>سجل الأيام السابقة والتصدير</h2>
-  }
-
-  async function saveOne(name){
-    try{
-      await storageSet(storageKey(name, currentDateKey), JSON.stringify(state[name]));
-    const ok = await storageSet(storageKey(name, currentDateKey), JSON.stringify(state[name]));
-    if(ok){
-      await addToIndex(currentDateKey);
-    }catch(e){
-      console.error('تعذر الحفظ', e);
-      hideSaveError();
-      return true;
-    } else {
-      showSaveError(name);
-      return false;
-    }
-  }
-
-  let pendingRetryName = null;
-  function showSaveError(name){
-    pendingRetryName = name;
-    const banner = document.getElementById('saveErrorBanner');
-    const msg = document.getElementById('saveErrorMsg');
-    msg.textContent = `⚠️ فشل حفظ آخر عملية لـ "${name}" على السيرفر — تحقق من الإنترنت واضغط إعادة المحاولة. البيانات لسه محفوظة على هذا الجهاز فقط ولن يراها الباقون حتى تنجح المحاولة.`;
-    banner.classList.add('show');
-  }
-  function hideSaveError(){
-    pendingRetryName = null;
-    const banner = document.getElementById('saveErrorBanner');
-    if(banner) banner.classList.remove('show');
-  }
-  // ===== Date index (so we know which days actually have data) =====
-  const INDEX_KEY = 'attendance:_index_dates';
-
-@@ -1160,8 +1197,12 @@ <h2>سجل الأيام السابقة والتصدير</h2>
-    if(syncInFlight) return;
-    syncInFlight = true;
-    try{
-      if(pendingRetryName){
-        await saveOne(pendingRetryName); // retry silently; banner clears itself on success
-      }
-      if(!hasClaudeStorage){ await ensureDbLoaded(true); } // pull fresh data from other devices
-      for(const name of EMPLOYEES){
-        if(name === pendingRetryName) continue; // don't overwrite an unsaved local change with stale server data
-        const raw = await storageGet(storageKey(name, currentDateKey));
-        state[name] = raw ? JSON.parse(raw) : emptyRecord();
-      }
-@@ -1328,6 +1369,20 @@ <h2>سجل الأيام السابقة والتصدير</h2>
-    });
-  }
-
-  function initSaveErrorBanner(){
-    const btn = document.getElementById('saveErrorRetryBtn');
-    if(!btn) return;
-    btn.addEventListener('click', async () => {
-      if(!pendingRetryName) return;
-      btn.disabled = true;
-      btn.textContent = 'جاري إعادة المحاولة...';
-      const ok = await saveOne(pendingRetryName);
-      btn.disabled = false;
-      btn.textContent = 'إعادة المحاولة الآن';
-      if(ok) render();
-    });
-  }
-  (async () => {
-    await loadSettings();
-    await reconcileMissedDays();
-@@ -1350,6 +1405,7 @@ <h2>سجل الأيام السابقة والتصدير</h2>
-    initAdminSettings();
-    initManualRefresh();
-    initDataLock();
-    initSaveErrorBanner();
-  })();
-})();
-</script>
-0 commit comments
-Comments
-0
- (0)
-Comment
-You're not receiving notifications from this thread.
-
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    background: radial-gradient(1200px 700px at 50% -10%, #1B2E56 0%, var(--navy-deep) 55%);
+    color: var(--ink-bright);
